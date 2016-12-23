@@ -1,0 +1,10 @@
+<html type="html5">
+    <head>
+        <title></title>
+    </head>
+    <body>
+        <div style="hello">
+            <img src="img.jpg" />
+        </div>
+    </body>
+</html>
