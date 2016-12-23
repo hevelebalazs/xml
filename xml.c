@@ -72,21 +72,140 @@ char *xmlRow(FILE *file) {
     return row;
 }
 
+struct xmltag {
+    char *name;
+
+    /* attributes */
+    int attrn;
+    struct {
+        char *name;
+        char *value;
+    } *attrs;
+
+    struct xmltag *parent;
+    /* children */
+    int childn;
+    struct xmltag **children;
+};
+typedef struct xmltag xmltag;
+
+void xmlAddChild(xmltag *parent, xmltag *child) {
+    if (!parent) return;
+    if (!child) return;
+
+    child->parent = parent;
+
+    parent->childn++;
+    parent->children = realloc(parent->children, parent->childn * sizeof(xmltag*));
+    parent->children[parent->childn - 1] = child;
+}
+
+void xmlAddAttr(xmltag *tag, char *attr) {
+    if (!tag) return;
+    if (!attr) return;
+
+    tag->attrn++;
+    tag->attrs = realloc(tag->attrs, tag->attrn * sizeof(tag->attrs[0]));
+
+    tag->attrs[tag->attrn - 1].name  = attr;
+    tag->attrs[tag->attrn - 1].value = 0;
+}
+
+void xmlDel(xmltag *tag) {
+    if (!tag) return;
+    free(tag->name); /* also frees attribute values */
+    free(tag->attrs);
+
+    int i;
+    for (i = 0; i < tag->childn; ++i) free(tag->children[i]);
+
+    free(tag->children);
+    free(tag);
+}
+
+xmltag *xmlGetTag(FILE *file) {
+    /* get opening row */
+    char *open = xmlRow(file);
+    char **opena = strSplit(open, " \n\t\r");
+    if (!opena || !opena[0]) {
+        free(open);
+        return 0;
+    }
+
+    char *name = opena[0];
+
+    xmltag *tag = calloc(1, sizeof(xmltag));
+    tag->name = name;
+
+    char closingtag = 1; /* is there a closing tag? */
+
+    if (tag->name[0] == '/') closingtag = 0;
+    /* information and comment tags */
+    if (name[0] == '?') closingtag = 0;
+    if (name[0] == '!' && name[1] == '-' && name[2] == '-') closingtag = 0;
+
+    /* fetch attributes */
+    int i = 1;
+    while (opena[i]) {
+        char *attr = opena[i];
+        if (!strcmp(attr, "/")) {
+            /* there is no closing tag */
+            closingtag = 0;
+        } else {
+            xmlAddAttr(tag, attr);
+        }
+        ++i;
+    }
+
+    if (!closingtag) return tag;
+
+    while (1) {
+        xmltag *child = xmlGetTag(file);
+        if (!child) break;
+        if (child->name[0] == '/' && !strcmp(&child->name[1], tag->name)) {
+            /* closing tag found */
+            xmlDel(child);
+            break;
+        }
+
+        xmlAddChild(tag, child);
+    }
+
+    return tag;
+}
+
+/* print xml structure recursively */
+void xmlPrint(xmltag *tag, int level) {
+    if (!tag) return;
+
+    /* print open row */
+    int i;
+    for (i = 0; i < level; ++i) printf("  ");
+    printf("<%s", tag->name);
+    for (i = 0; i < tag->attrn; ++i) {
+        char *name  = tag->attrs[i].name;
+        char *value = tag->attrs[i].value;
+        printf(" %s", name);
+        if (value) printf(" %s", value);
+    }
+    printf(">\n");
+
+    /* print children */
+    for (i = 0; i < tag->childn; ++i) xmlPrint(tag->children[i], level + 1);
+
+    /* print close row */
+    for (i = 0; i < level; ++i) printf("  ");
+    printf("</%s>\n", tag->name);
+}
+
 int main() {
     FILE *file = fopen("xml.xml", "r");
-    char *row;
+    xmltag *tag;
     while (1) {
-        row = xmlRow(file);
-        if (!row) return;
-
-        char **attrs = strSplit(row, " \n\t\r");
-        /* print */
-        int i;
-        printf("<\n");
-        for (i = 0; attrs[i]; ++i) printf(" %s\n", attrs[i]);
-        printf(">\n");
-
-        free(row);
+        tag = xmlGetTag(file);
+        xmlPrint(tag, 0);
+        if (!tag) break;
+        xmlDel(tag);
     }
     fclose(file);
     return 0;
