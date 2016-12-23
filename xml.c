@@ -72,15 +72,18 @@ char *xmlRow(FILE *file) {
     return row;
 }
 
+struct xmlattr {
+    char *name;
+    char *value;
+};
+typedef struct xmlattr xmlattr;
+
 struct xmltag {
     char *name;
 
     /* attributes */
     int attrn;
-    struct {
-        char *name;
-        char *value;
-    } *attrs;
+    xmlattr *attrs;
 
     struct xmltag *parent;
     /* children */
@@ -100,15 +103,29 @@ void xmlAddChild(xmltag *parent, xmltag *child) {
     parent->children[parent->childn - 1] = child;
 }
 
-void xmlAddAttr(xmltag *tag, char *attr) {
+/* may change string "attr" */
+void xmlAddAttr(xmltag *tag, char *str) {
     if (!tag) return;
-    if (!attr) return;
+    if (!str) return;
 
     tag->attrn++;
     tag->attrs = realloc(tag->attrs, tag->attrn * sizeof(tag->attrs[0]));
 
-    tag->attrs[tag->attrn - 1].name  = attr;
-    tag->attrs[tag->attrn - 1].value = 0;
+    xmlattr *attr = &tag->attrs[tag->attrn - 1];
+
+    attr->name  = str;
+    attr->value = 0;
+
+    int i;
+    for (i = 0; str[i]; ++i) {
+        if (str[i] == '=') {
+            str[i] = 0;
+        }
+        if (str[i] == '"') {
+            if (!attr->value) attr->value = &str[i + 1];
+            str[i] = 0;
+        }
+    }
 }
 
 void xmlDel(xmltag *tag) {
@@ -186,7 +203,7 @@ void xmlPrint(xmltag *tag, int level) {
         char *name  = tag->attrs[i].name;
         char *value = tag->attrs[i].value;
         printf(" %s", name);
-        if (value) printf(" %s", value);
+        if (value) printf("=\"%s\"", value);
     }
     printf(">\n");
 
